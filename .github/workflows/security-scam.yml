@@ -84,20 +84,13 @@ jobs:
 
           ### Bridge CLI configuration
           bridgecli_install_directory: '/tmp/bridge'
-          bridgecli_download_url: ${{ vars.BRIDGECLI_DOWNLOAD_URL }}
-          bridgecli_download_version: 'latest'
+          # bridgecli_download_url: ${{ vars.BRIDGECLI_DOWNLOAD_URL }}
+          bridgecli_download_url: "https://artifactory.tools.duckutil.net/artifactory/clops-local/integrations/bridge/binaries/bridge-cli-bundle/4.1.0rc3/bridge-cli-bundle-4.1.0rc3-macosx.zip"
 
-          ### Additional Detect arguments for SCA
-          detect_search_depth: 3
-          detect_args: '--detect.diagnostic=true --detect.cleanup=false'
-          detect_config_path: './detect-config.yml'
 
-          ### Additional Coverity arguments for SAST
-          coverity_build_command: 'npm install'
-          coverity_clean_command: 'npm run clean'
-          coverity_config_path: './coverity-config.yml'
-          coverity_args: '--verbose --fs-capture-search .'
-          coverity_version: '2023.6.0'
+          
+
+          
 
           ### Diagnostics
           include_diagnostics: true
