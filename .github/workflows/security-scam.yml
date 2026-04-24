@@ -1,0 +1,296 @@
+name: CI-Polaris-Advanced-Args                                                                                                                                     
+                                                                                                                                                                     
+on:                                                                                                                                                                
+    push:                                                                                                                                                            
+      branches: [main, master, develop, stage, release]                                                                                                              
+    pull_request:
+      branches: [main, master, develop, stage, release]
+    schedule:
+      - cron: '0 2 * * 1'  # Weekly on Monday at 2 AM
+    workflow_dispatch:
+
+jobs:
+    polaris-full-scan:
+      runs-on: [ubuntu-latest]
+      steps:
+      - name: Checkout Source
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '14'
+
+      - name: Polaris Full Scan with All Options
+        id: polaris-full-scan
+        if: ${{ github.event_name != 'pull_request' }}
+        uses: blackduck-inc/black-duck-security-scan@v2
+        with:
+          polaris_server_url: ${{ vars.POLARIS_SERVER_URL }}
+          polaris_access_token: ${{ secrets.POLARIS_ACCESS_TOKEN }}
+          polaris_application_name: ${{ github.event.repository.name }}
+          polaris_project_name: ${{ github.event.repository.name }}
+          polaris_assessment_types: "SCA,SAST"
+
+          ### Branch configuration
+          polaris_branch_name: ${{ github.ref_name }}
+          polaris_branch_parent_name: 'main'
+
+          ### Wait for scan completion (set to false for async mode)
+          polaris_waitForScan: true
+
+          ### Test type and location configuration
+          polaris_test_sca_type: 'package'  # Options: package, signature
+          polaris_test_sast_type: 'full'    # Options: full, rapid
+          polaris_test_sca_location: 'Hybrid'   # Options: Hybrid, Local, Remote
+          polaris_test_sast_location: 'Hybrid'  # Options: Hybrid, Local, Remote
+
+          ### Assessment mode
+          polaris_assessment_mode: 'CI'
+
+          ### Triage configuration
+          polaris_triage: 'Required'
+
+          ### Project source configuration
+          project_directory: ${{ github.workspace }}
+          # project_source_archive: './source.zip'  # Use this for pre-zipped source
+          project_source_excludes: 'node_modules,*.log,test,coverage,.git'
+          project_source_preserveSymLinks: false
+
+          ### GitHub External Issues
+          polaris_externalIssues_create: true
+          polaris_externalIssues_types: "SCA,SAST"
+          polaris_externalIssues_severities: "critical,high,medium"
+          polaris_externalIssues_groupSCAIssues: true
+          polaris_externalIssues_maxCount: 10
+
+          ### Fix PR configuration (SCA vulnerabilities)
+          polaris_fixpr_enabled: true
+          polaris_fixpr_maxCount: 10
+          polaris_fixpr_filter_severities: "CRITICAL,HIGH"
+          polaris_fixpr_useUpgradeGuidance: "SHORT_TERM,LONG_TERM"
+
+          ### SARIF report generation and upload to GitHub Advanced Security
+          polaris_reports_sarif_create: true
+          polaris_reports_sarif_file_path: 'polaris-results.sarif.json'
+          polaris_reports_sarif_severities: 'CRITICAL,HIGH,MEDIUM'
+          polaris_reports_sarif_groupSCAIssues: true
+          polaris_reports_sarif_issue_types: 'SCA,SAST'
+          polaris_upload_sarif_report: true
+
+          ### Policy badges
+          polaris_policy_badges_create: true
+          polaris_policy_badges_maxCount: 5
+
+          ### Bridge CLI configuration
+          bridgecli_install_directory: '/tmp/bridge'
+          bridgecli_download_url: ${{ vars.BRIDGECLI_DOWNLOAD_URL }}
+          bridgecli_download_version: 'latest'
+
+          ### Additional Detect arguments for SCA
+          detect_search_depth: 3
+          detect_args: '--detect.diagnostic=true --detect.cleanup=false'
+          detect_config_path: './detect-config.yml'
+
+          ### Additional Coverity arguments for SAST
+          coverity_build_command: 'npm install'
+          coverity_clean_command: 'npm run clean'
+          coverity_config_path: './coverity-config.yml'
+          coverity_args: '--verbose --fs-capture-search .'
+          coverity_version: '2023.6.0'
+
+          ### Diagnostics
+          include_diagnostics: true
+          diagnostics_retention_days: 7
+
+          ### Build status configuration
+          mark_build_status: 'failure'  # Options: success, failure
+
+          ### Network configuration (for self-signed certificates)
+          # network_ssl_trustAll: true
+          # network_ssl_cert_file: '/path/to/cert.pem'
+
+          ### Air-gap environment support
+          # network_airgap: true
+          # bridge_network_airgap: true
+
+          ### GitHub token (required for Fix PR, SARIF upload, External Issues)
+          github_token: ${{ secrets.TOKENACTION }}
+
+      - name: Upload SARIF as Artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: polaris-sarif-results
+          path: polaris-results.sarif.json
+          retention-days: 30
+
+      - name: Save Bridge Logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bridge-logs-full-scan
+          path: ${{ github.workspace }}/.bridge
+          include-hidden-files: true
+          retention-days: 7
+
+    polaris-pr-scan:
+      runs-on: [ubuntu-latest]
+      if: ${{ github.event_name == 'pull_request' }}
+      steps:
+      - name: Checkout Source
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '14'
+
+      - name: Polaris PR Scan with Advanced Options
+        id: polaris-pr-scan
+        uses: blackduck-inc/black-duck-security-scan@v2
+        with:
+          polaris_server_url: ${{ vars.POLARIS_SERVER_URL }}
+          polaris_access_token: ${{ secrets.POLARIS_ACCESS_TOKEN }}
+          polaris_application_name: ${{ github.event.repository.name }}
+          polaris_project_name: ${{ github.event.repository.name }}
+          polaris_assessment_types: "SCA,SAST"
+
+          ### Branch configuration for PR
+          polaris_branch_name: ${{ github.head_ref }}
+          polaris_branch_parent_name: ${{ github.base_ref }}
+
+          ### Test configuration
+          polaris_test_sca_type: 'package'
+          polaris_test_sast_type: 'rapid'  # Use rapid for faster PR scans
+          polaris_test_sca_location: 'Hybrid'
+          polaris_test_sast_location: 'Hybrid'
+
+          ### Project configuration
+          project_directory: ${{ github.workspace }}
+          project_source_excludes: 'node_modules,*.log,test,coverage,.git'
+
+          ### PR Comments enabled with severity filter
+          polaris_prComment_enabled: true
+          polaris_prComment_severities: 'CRITICAL,HIGH'
+
+          ### Additional arguments
+          detect_search_depth: 3
+          detect_args: '--detect.diagnostic=true'
+
+          coverity_build_command: 'npm install'
+          coverity_args: '--verbose'
+
+          ### Diagnostics for PR scans
+          include_diagnostics: true
+          diagnostics_retention_days: 3
+
+          ### Build status
+          mark_build_status: 'failure'
+
+          ### GitHub token required for PR comments
+          github_token: ${{ secrets.TOKENACTION }}
+
+      - name: Save Bridge Logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bridge-logs-pr-scan
+          path: ${{ github.workspace }}/.bridge
+          include-hidden-files: true
+          retention-days: 3
+
+      - name: Custom Logic Based on Exit Status
+        if: always()
+        run: |
+          EXIT_CODE=${{ steps.polaris-pr-scan.outputs.status }}
+          echo "Polaris PR Scan exit status - $EXIT_CODE"
+
+          if [ "$EXIT_CODE" -eq "0" ]; then
+            echo "✅ Scan completed successfully with no issues"
+          elif [ "$EXIT_CODE" -eq "1" ]; then
+            echo "⚠️ Scan completed but found policy violations"
+          else
+            echo "❌ Scan failed with error code: $EXIT_CODE"
+          fi
+
+    polaris-source-upload-scan:
+      runs-on: [ubuntu-latest]
+      if: ${{ github.event_name == 'workflow_dispatch' }}
+      steps:
+      - name: Checkout Source
+        uses: actions/checkout@v4
+
+      - name: Polaris Source Upload Method
+        id: polaris-source-upload
+        uses: blackduck-inc/black-duck-security-scan@v2
+        with:
+          polaris_server_url: ${{ vars.POLARIS_SERVER_URL }}
+          polaris_access_token: ${{ secrets.POLARIS_ACCESS_TOKEN }}
+          polaris_application_name: ${{ github.event.repository.name }}
+          polaris_project_name: ${{ github.event.repository.name }}
+          polaris_assessment_types: "SCA,SAST"
+
+          ### Source Upload configuration (Remote analysis)
+          polaris_test_sast_location: 'remote'
+          polaris_test_sca_location: 'remote'
+
+          ### Source packaging options
+          project_source_excludes: 'node_modules,*.log,test,coverage,.git,dist'
+          project_source_preserveSymLinks: true
+
+          ### Optional: Use pre-packaged archive
+          # project_source_archive: './my-source.zip'
+
+          ### Other configurations
+          polaris_waitForScan: true
+
+          include_diagnostics: true
+          diagnostics_retention_days: 7
+
+          github_token: ${{ secrets.TOKENACTION }}
+
+      - name: Save Bridge Logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bridge-logs-source-upload
+          path: ${{ github.workspace }}/.bridge
+          include-hidden-files: true
+
+    polaris-local-analysis:
+      runs-on: [ubuntu-latest]
+      if: ${{ github.event_name == 'workflow_dispatch' }}
+      steps:
+      - name: Checkout Source
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '14'
+
+      - name: Polaris Local Analysis
+        id: polaris-local-analysis
+        uses: blackduck-inc/black-duck-security-scan@v2
+        with:
+          polaris_server_url: ${{ vars.POLARIS_SERVER_URL }}
+          polaris_access_token: ${{ secrets.POLARIS_ACCESS_TOKEN }}
+          polaris_application_name: ${{ github.event.repository.name }}
+          polaris_project_name: ${{ github.event.repository.name }}
+          polaris_assessment_types: "SAST"
+
+          ### Local Analysis configuration
+          polaris_test_sast_location: 'local'
+
+          ### Build configuration for local analysis
+          coverity_build_command: 'npm install && npm run build'
+          coverity_clean_command: 'npm run clean'
+          coverity_config_path: './coverity-config.yml'
+          coverity_version: '2023.6.0'
+
+          polaris_waitForScan: true
+
+          include_diagnostics: true
+
+          github_token: ${{ secrets.TOKENACTION }}
